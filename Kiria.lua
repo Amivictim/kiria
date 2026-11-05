@@ -4,21 +4,23 @@
 --        send Kiria.Name / Kiria.Avatar as the webhook username / avatar_url
 
 local Kiria = {
-    Version = "1.1",
+    Version = "1.2",
     Name = "Daughter of Kirito ,,, Kiria Win.",
     Avatar = "https://raw.githubusercontent.com/Amivictim/adoptmefarm/refs/heads/main/victimoffate_.png",
     Footer = "Kiria",
     MemoryFile = "Kiria_memory.json",
 }
 
+-- the GIFs live in this repo (gifs/), Discord shows GitHub images reliably
+Kiria.GifBase = "https://raw.githubusercontent.com/Amivictim/kiria/refs/heads/main/gifs/"
 Kiria.Gifs = {
-    start   = "https://media1.tenor.com/m/co7Ve4XL7hMAAAAd/%E3%83%A1%E3%83%80%E3%83%AA%E3%82%B9%E3%83%88-inori-yuitsuka.gif",
-    didIt   = "https://media1.tenor.com/m/L-7KQj9o4gAAAAAd/medalist-inori.gif",
-    smirk   = "https://media1.tenor.com/m/m5QWK9z_rTsAAAAd/medalist-inori.gif",
-    excited = "https://media1.tenor.com/m/ly7jh7JUnREAAAAd/medalist-inori.gif",
-    ego     = "https://media1.tenor.com/m/IvCIh8jOT7YAAAAd/medalist-inori.gif",
-    weDidIt = "https://media1.tenor.com/m/NpPtj0ArnK8AAAAd/medalist-medalist-manga.gif",
-    cry     = "https://media1.tenor.com/m/VVm2bMo4BXEAAAAC/medalist-inori.gif",
+    start   = Kiria.GifBase .. "start.gif",
+    didIt   = Kiria.GifBase .. "didIt.gif",
+    smirk   = Kiria.GifBase .. "smirk.gif",
+    excited = Kiria.GifBase .. "excited.gif",
+    ego     = Kiria.GifBase .. "ego.gif",
+    weDidIt = Kiria.GifBase .. "weDidIt.gif",
+    cry     = Kiria.GifBase .. "cry.gif",
 }
 
 -- {placeholders} are filled from ctx: give, get, gain, pct, n, pet, items, value, best, streak, wins, sessions, days, hour, declines
