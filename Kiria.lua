@@ -5,7 +5,7 @@
 --        webhook: username = Kiria.Name .. " | " .. Kiria.Title, avatar_url = Kiria.Avatar, her line = the card's text
 
 local Kiria = {
-    Version = "3.0",
+    Version = "3.1",
     Name = "Kiria",
     Title = "Kirito's Lost Fragment",
     Avatar = "https://raw.githubusercontent.com/Amivictim/adoptmefarm/refs/heads/main/victimoffate_.png",
@@ -181,8 +181,8 @@ Kiria.Lines = {
         "New title: {rank}. I'll keep taking good care of our trades.",
     },
     warning = {
-        "I ran into something I can't fix by myself. Here's what happened:",
-        "I need your help with something. Here's what I saw:",
+        "I ran into something I can't fix by myself. What happened is written above.",
+        "I need your help with something. I wrote what I saw above.",
     },
 }
 
