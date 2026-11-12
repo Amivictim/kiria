@@ -3,9 +3,14 @@
 -- Use:   local line, gif, mood, meta = Kiria.react("win", { pct = 35, gain = 1.2, give = "Owl", get = "Shadow Dragon" })
 --        meta = { rank = "Analyst", xp = 340, promoted = false }
 --        webhook: username = Kiria.Name .. " | " .. Kiria.Title, avatar_url = Kiria.Avatar, her line = the card's text
+--
+-- 3.2 (2026-11-12, for TradeBot v1.4): ask listings (one pet for one pet worth more, traded by the game itself),
+-- where a win came from (our offer / an offer on our listing / our ask listing), "still working" lines, the game's
+-- fairness limit explained as it now works, no promise about answer times, memory kept in the TradeBot/ folder.
+-- Older bots still get clean lines: a line whose details are missing is skipped.
 
 local Kiria = {
-    Version = "3.1",
+    Version = "3.2",
     Name = "Kiria",
     Title = "Kirito's Lost Fragment",
     Avatar = "https://raw.githubusercontent.com/Amivictim/adoptmefarm/refs/heads/main/victimoffate_.png",
@@ -73,7 +78,7 @@ Kiria.Lines = {
         "This is practice mode, so nothing real will be traded. I'll show you what I would do.",
     },
 
-    -- a finished trade
+    -- a finished trade (our offer was accepted)
     smallWin = {
         "Done! We gave {give} and got {get}. That's +{pct}% for us. Small steps like this add up.",
         "Trade done: {give} for {get}, +{pct}%. Not big, but safe and steady.",
@@ -89,6 +94,16 @@ Kiria.Lines = {
     hugeWin = {
         "Wow! {give} became {get}. We more than doubled the value (+{pct}%).",
         "This one is special: {give} for {get}, +{pct}%. I'm so happy right now.",
+    },
+    -- a trader came to us: an offer on our listing that I accepted
+    incomingWin = {
+        "Someone made a good offer on our listing: {give} for {get}, +{pct}%. I took it.",
+        "An offer on our {give} listing was good for us, so I accepted: we got {get} (+{pct}%).",
+    },
+    -- our ask listing traded by itself (the game does it when someone offers exactly what we asked)
+    askWin = {
+        "Our ask listing worked! Someone gave {get} for our {give}. That's +{pct}% for us.",
+        "{give} is gone and {get} is ours. Someone took our listing exactly as asked (+{pct}%).",
     },
     lossTrade = {
         "This trade came out a little behind ({gain}). The value list changed after I sent the offer. I'll keep watching the values.",
@@ -109,7 +124,6 @@ Kiria.Lines = {
     sent = {
         "I sent {sent} new {sent:offer|offers}. Each one asks for a little more value than we give.",
         "{sent} new {sent:offer is|offers are} out. Now we wait for answers.",
-        "I sent {sent} {sent:offer|offers}. Most traders answer within 15 minutes.",
     },
     declinedWhy = {
         "{declined} {declined:offer was|offers were} declined. That's normal: a lister often gets many offers and picks only one.",
@@ -125,14 +139,14 @@ Kiria.Lines = {
         "I swapped {replaced} {replaced:offer|offers} for {replaced:a better one|better ones}.",
     },
     expired = {
-        "{expired} {expired:offer|offers} got no answer for a long time, so I cancelled {expired:it|them} and freed the pets.",
+        "{expired} {expired:offer|offers} got no answer in time, so I cancelled {expired:it|them} and freed the pets for new offers.",
         "No answer on {expired} {expired:offer|offers}, so I took {expired:it|them} back. The pets are free for new offers.",
     },
     failWhy = {
-        "The game didn't let {failed} {failed:offer|offers} through. That's the game's own rule, not the other player. If a pet keeps getting blocked, I give it a break for an hour.",
+        "The game didn't let {failed} {failed:offer|offers} through. The game checks fairness with its own prices, not our value list. I now remember how much it allows for that pet, so I won't ask that much again.",
     },
     failShort = {
-        "The game blocked {failed} {failed:offer|offers}.",
+        "The game blocked {failed} {failed:offer|offers}. I noted its limit for next time.",
     },
     manyDeclined = {
         "Lots of no's today, I know. That's how the Trade Hub works: one good yes is worth many no's. I'm staying patient for us.",
@@ -144,14 +158,38 @@ Kiria.Lines = {
         "I listed {items} for offers. If someone offers more than it's worth to us, I'll accept.",
         "{items} is up for offers now. I'll only accept an offer that gives us more value.",
     },
+    listingAsk = {
+        "I listed {items} and asked for {ask} (+{askPct}%). If someone offers exactly that, the game trades it by itself, even while I'm busy.",
+        "New ask listing: our {items} for their {ask}. If someone has it, the trade happens on its own.",
+    },
+    listingAskShort = {
+        "Ask listing up: {items} for {ask}.",
+    },
     listingBundle = {
         "I listed {n} pets together ({items}) and I'm waiting for good offers.",
         "A bundle of {n} pets ({items}) is up for offers. I'll only accept an offer that gives us more value.",
     },
-    listingPractice = { "Practice: I would list {items} now." },
+    listingOne = {
+        "{items} is up for offers too. Once I know what other traders hold, I'll turn it into an ask listing.",
+    },
+    listingPractice = {
+        "Practice: I would list {items} and ask for {ask}.",
+        "Practice: I would list {items} now.",
+    },
     refresh = {
         "{items} got no good offer in {min} minutes, so I took it down. Something fresh comes next.",
         "That listing got no good offer, so I took it down. Something fresh comes next.",
+    },
+
+    -- no Discord message for a while: what she has been doing (TradeBot's "still working" card)
+    quiet = {
+        "Still here and still working. I checked {listings} listings in {min} minutes, {fresh} of them new. Nothing good enough yet, so I keep looking.",
+        "Quiet, but busy: {waiting} {waiting:offer is|offers are} waiting for an answer, and I keep checking new listings.",
+        "The Trade Hub is busy: {fresh} new listings since my last message. I'm being picky for us.",
+        "I looked at {listings} listings in the last {min} minutes. I only trade when we come out ahead, so I'm still waiting for the right one.",
+    },
+    quietIdle = {
+        "It's quiet, and I could not look at listings for {min} minutes. I'm still running and I'll keep trying.",
     },
 
     -- how the session is going
@@ -188,14 +226,35 @@ Kiria.Lines = {
 
 local HttpService = game:GetService("HttpService")
 local mem = { sessions = 0, firstSeen = os.time(), trades = 0, total = 0, bestGain = 0, neons = 0, megas = 0, xp = 0,
-    lastRate = nil, curRate = nil }
+    lastRate = nil, curRate = nil, askTrades = 0, incomingTrades = 0 }
 -- this session: wins, offers sent, no's since the last win, what she has already explained
 local S = { wins = 0, sent = 0, noSinceWin = 0, cheeredAt = 0, told = {} }
 
+-- her memory sits with TradeBot's own files (the "TradeBot" folder) when the executor has folders;
+-- a memory file left at the top level is moved in once
+local function memoryPath()
+    local root, dir = Kiria.MemoryFile, "TradeBot"
+    local okD, has = pcall(function()
+        if type(isfolder) ~= "function" then return false end
+        if not isfolder(dir) and type(makefolder) == "function" then makefolder(dir) end
+        return isfolder(dir) == true
+    end)
+    if not (okD and has) then return root end
+    local p = dir .. "/" .. root
+    pcall(function()
+        if isfile and isfile(root) and not isfile(p) then
+            writefile(p, readfile(root))
+            if type(delfile) == "function" and isfile(p) then delfile(root) end
+        end
+    end)
+    return p
+end
+local MEMORY = memoryPath()
+
 local function loadMemory()
     pcall(function()
-        if isfile and isfile(Kiria.MemoryFile) then
-            local t = HttpService:JSONDecode(readfile(Kiria.MemoryFile))
+        if isfile and isfile(MEMORY) then
+            local t = HttpService:JSONDecode(readfile(MEMORY))
             if type(t) == "table" then
                 for k, v in pairs(t) do mem[k] = v end
                 -- memory from before the career system: count the work already done
@@ -208,7 +267,7 @@ local function loadMemory()
     end)
 end
 local function saveMemory()
-    pcall(function() if writefile then writefile(Kiria.MemoryFile, HttpService:JSONEncode(mem)) end end)
+    pcall(function() if writefile then writefile(MEMORY, HttpService:JSONEncode(mem)) end end)
 end
 loadMemory()
 
@@ -218,8 +277,8 @@ function Kiria.rank()
     return title, xp
 end
 
-local MONEY = { gain = true, total = true, value = true, diff = true, start = true, giveV = true, getV = true }
-local PERCENT = { pct = true, rate = true, lastRate = true }
+local MONEY = { gain = true, total = true, value = true, diff = true, start = true, giveV = true, getV = true, askV = true }
+local PERCENT = { pct = true, rate = true, lastRate = true, askPct = true }
 
 local function fill(text, ctx)
     if type(text) ~= "string" then return nil end
@@ -250,10 +309,12 @@ end
 
 local function num(v) return tonumber(v) or 0 end
 
--- event: start | win | round | listing | refresh | progress | neon | mega | warning
+-- event: start | win | round | listing | refresh | progress | quiet | neon | mega | warning
 --        (offers | declined | failed: the per-kind cards of older TradeBot builds)
--- ctx:   start: dry, minPct | win: pct, gain, give, get, giveV, getV, dry | round: sent, declined, replaced, expired, failed
---        listing: slot ("top" / "bundle"), items, n, dry | refresh: items, min | progress: pct, diff, value, wins, offers, rate
+-- ctx:   start: dry, minPct | win: pct, gain, give, get, giveV, getV, dry, source ("incoming" / "ask" / nil)
+--        round: sent, declined, replaced, expired, failed
+--        listing: slot ("top" / "ask" / "bundle"), items, n, dry, ask, askV, askPct | refresh: items, min
+--        progress: pct, diff, value, wins, offers, rate | quiet: listings, fresh, sent, waiting, min
 --        neon / mega: pet | offers / declined / failed: n, declined
 -- returns: line (string, may have several lines, or nil when she has nothing to add), gif url (or nil), mood (one word),
 --          meta { rank, xp, promoted }
@@ -315,11 +376,23 @@ function Kiria.react(event, ctx)
             local record = mem.trades > 1 and gain > (tonumber(mem.bestGain) or 0)
             if gain > (tonumber(mem.bestGain) or 0) then mem.bestGain = gain end
             earn(10 + math.min(40, math.max(0, pct) / 2))
-            if gain < 0 then say(L.lossTrade); mood = "careful"
-            elseif pct >= 100 then say(L.hugeWin); gif, mood = G.excited, "thrilled"
-            elseif pct >= 50 then say(L.bigWin); gif, mood = G.weDidIt, "excited"
-            elseif pct >= 20 then say(L.win); gif, mood = G.didIt, "proud"
-            else say(L.smallWin); gif, mood = G.smirk, "happy" end
+            -- the gif and mood follow the size of the win; the words follow where it came from
+            if gain < 0 then mood = "careful"
+            elseif pct >= 100 then gif, mood = G.excited, "thrilled"
+            elseif pct >= 50 then gif, mood = G.weDidIt, "excited"
+            elseif pct >= 20 then gif, mood = G.didIt, "proud"
+            else gif, mood = G.smirk, "happy" end
+            if gain < 0 then say(L.lossTrade)
+            elseif ctx.source == "ask" and say(L.askWin) then
+                mem.askTrades = (tonumber(mem.askTrades) or 0) + 1
+                earn(5)
+                if mood == "happy" then mood = "pleased" end
+            elseif ctx.source == "incoming" and say(L.incomingWin) then
+                mem.incomingTrades = (tonumber(mem.incomingTrades) or 0) + 1
+            elseif pct >= 100 then say(L.hugeWin)
+            elseif pct >= 50 then say(L.bigWin)
+            elseif pct >= 20 then say(L.win)
+            else say(L.smallWin) end
             if (tonumber(ctx.n) or 1) > 1 or string.find(tostring(ctx.give), "+", 1, true) then say(L.valueWhy) end
             if record then say(L.record); gif, mood = G.excited, "over the moon" end
             if gain >= 0 and (S.wins == 3 or S.wins == 5 or S.wins % 10 == 0) then ctx.count = S.wins; say(L.milestone) end
@@ -348,10 +421,17 @@ function Kiria.react(event, ctx)
         earn(1)
         if ctx.dry then say(L.listingPractice)
         elseif ctx.slot == "top" then say(L.listingTop)
+        elseif ctx.slot == "ask" then explain("ask", L.listingAsk, L.listingAskShort)
+        elseif num(ctx.n) == 1 then say(L.listingOne)
         else say(L.listingBundle) end
-        mood = "hopeful"
+        mood = ctx.slot == "ask" and "clever" or "hopeful"
     elseif event == "refresh" then
         say(L.refresh); mood = "patient"
+    elseif event == "quiet" then
+        -- a line only uses a number when there is something to tell (no "0 offers are waiting")
+        for _, k in ipairs({ "listings", "fresh", "waiting" }) do if num(ctx[k]) <= 0 then ctx[k] = nil end end
+        if ctx.listings then say(L.quiet) else say(L.quietIdle) end
+        mood = ctx.listings and "focused" or "patient"
     elseif event == "progress" then
         local pct = num(ctx.pct)
         if pct >= 100 then say(L.progressHuge); gif, mood = G.excited, "proud"
