@@ -8,9 +8,13 @@
 -- where a win came from (our offer / an offer on our listing / our ask listing), "still working" lines, the game's
 -- fairness limit explained as it now works, no promise about answer times, memory kept in the TradeBot/ folder.
 -- Older bots still get clean lines: a line whose details are missing is skipped.
+--
+-- 3.3 (2026-11-18, for TradeBot 2.5.0): Flip Mode lines (flip_start, flip_entry, flip_wait, flip_complete,
+-- flip_expired, flip_recovery). A completed flip earns XP once and counts in her memory as a flip (mem.flips),
+-- never as an ordinary trade; practice (simulated) flips earn nothing. TradeBot sends each flip event once per cycle.
 
 local Kiria = {
-    Version = "3.2",
+    Version = "3.3",
     Name = "Kiria",
     Title = "Kirito's Lost Fragment",
     Avatar = "https://raw.githubusercontent.com/Amivictim/adoptmefarm/refs/heads/main/victimoffate_.png",
@@ -218,6 +222,45 @@ Kiria.Lines = {
         "I got promoted to {rank}! Thank you for trusting me with your pets.",
         "New title: {rank}. I'll keep taking good care of our trades.",
     },
+    -- Flip Mode: trade one pet for a few pets worth more, buy that pet back with part of them, keep the rest
+    flipWhy = {
+        "New plan: a flip. I trade our {pet} for a few pets worth more, then buy {pet} back with some of them. What's left is our profit.",
+    },
+    flipStart = {
+        "Starting a flip with our {pet}.",
+        "Next flip: {pet}. I'm looking for someone who gives more for it.",
+    },
+    flipPractice = {
+        "Practice flip: I use real listings, but no real trade happens.",
+    },
+    flipEntry = {
+        "We got a nice overpay for {pet}: {get}.",
+        "Step one done: {pet} went out, {get} came in.",
+    },
+    flipSearching = {
+        "Now let's see if we can get our {pet} back.",
+        "Next I look for {pet} to buy it back. I won't overpay for it.",
+    },
+    flipWait = {
+        "That return trade isn't worth the risk. I'll keep looking.",
+        "The buyback offers I see would lose value overall, so I'm waiting for a better one.",
+    },
+    flipComplete = {
+        "We got our {pet} back and kept {kept}. That's a clean flip! +{gain} overall.",
+        "We got our {pet} back and kept the extra value. That's a clean flip!",
+    },
+    flipExact = {
+        "It's even the very same {pet} we started with.",
+    },
+    flipPracticeDone = {
+        "Practice flip done: with these listings it would have made +{gain}. No real trade happened.",
+    },
+    flipExpired = {
+        "This flip ran out of time. I didn't force a bad trade, so the pets we got stay with us.",
+    },
+    flipRecovery = {
+        "Something in this flip is unclear, so I stopped it to keep your pets safe. Please take a look.",
+    },
     warning = {
         "I ran into something I can't fix by myself. What happened is written above.",
         "I need your help with something. I wrote what I saw above.",
@@ -226,7 +269,7 @@ Kiria.Lines = {
 
 local HttpService = game:GetService("HttpService")
 local mem = { sessions = 0, firstSeen = os.time(), trades = 0, total = 0, bestGain = 0, neons = 0, megas = 0, xp = 0,
-    lastRate = nil, curRate = nil, askTrades = 0, incomingTrades = 0 }
+    lastRate = nil, curRate = nil, askTrades = 0, incomingTrades = 0, flips = 0, flipGain = 0 }
 -- this session: wins, offers sent, no's since the last win, what she has already explained
 local S = { wins = 0, sent = 0, noSinceWin = 0, cheeredAt = 0, told = {} }
 
@@ -310,12 +353,14 @@ end
 local function num(v) return tonumber(v) or 0 end
 
 -- event: start | win | round | listing | refresh | progress | quiet | neon | mega | warning
+--        | flip_start | flip_entry | flip_wait | flip_complete | flip_expired | flip_recovery (TradeBot 2.5 Flip Mode)
 --        (offers | declined | failed: the per-kind cards of older TradeBot builds)
 -- ctx:   start: dry, minPct | win: pct, gain, give, get, giveV, getV, dry, source ("incoming" / "ask" / nil)
 --        round: sent, declined, replaced, expired, failed
 --        listing: slot ("top" / "ask" / "bundle"), items, n, dry, ask, askV, askPct | refresh: items, min
 --        progress: pct, diff, value, wins, offers, rate | quiet: listings, fresh, sent, waiting, min
 --        neon / mega: pet | offers / declined / failed: n, declined
+--        flip_*: dry (practice), pet, value, get (what step one gave), gain, pct, kept, exact (same pet back), why
 -- returns: line (string, may have several lines, or nil when she has nothing to add), gif url (or nil), mood (one word),
 --          meta { rank, xp, promoted }
 function Kiria.react(event, ctx)
@@ -454,6 +499,32 @@ function Kiria.react(event, ctx)
         if event == "mega" then mem.megas = (tonumber(mem.megas) or 0) + 1; earn(40) else mem.neons = (tonumber(mem.neons) or 0) + 1; earn(15) end
         say(event == "mega" and L.mega or L.neon)
         gif, mood = G.excited, "sparkling"
+    elseif event == "flip_start" then
+        if ctx.dry then say(L.flipPractice) end
+        explain("flip", L.flipWhy, L.flipStart)
+        mood = "focused"
+    elseif event == "flip_entry" then
+        if not ctx.dry then earn(5) end
+        say(L.flipEntry)
+        say(L.flipSearching)
+        gif, mood = G.smirk, "hopeful"
+    elseif event == "flip_wait" then
+        say(L.flipWait); mood = "patient"
+    elseif event == "flip_complete" then
+        if ctx.dry then
+            say(L.flipPracticeDone); mood = "curious"
+        else
+            mem.flips = (tonumber(mem.flips) or 0) + 1
+            mem.flipGain = (tonumber(mem.flipGain) or 0) + num(ctx.gain)
+            earn(25)
+            say(L.flipComplete)
+            if ctx.exact then say(L.flipExact) end
+            gif, mood = G.weDidIt, "proud"
+        end
+    elseif event == "flip_expired" then
+        say(L.flipExpired); mood = "calm"
+    elseif event == "flip_recovery" then
+        say(L.flipRecovery); gif, mood = G.cry, "careful"
     elseif event == "warning" then
         say(L.warning); gif, mood = G.cry, "worried"
     else
